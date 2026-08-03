@@ -1,0 +1,19 @@
+{
+  "name": "haug-ssoma-rigging-portal",
+  "version": "1.0.0",
+  "description": "SPA estática orientada a supervisión SSOMA/HSE para izajes mecánicos, aparejos, grúas móviles, izaje tándem y equipos auxiliares como tecles, winches, tirfor y gatas hidráulicas.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "jsdom": "^29.1.1"
+  },
+  "devDependencies": {
+    "puppeteer": "^25.4.0"
+  }
+}
