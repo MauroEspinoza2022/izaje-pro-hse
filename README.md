@@ -30,6 +30,12 @@ Nombre del proyecto: HAUG SSOMA Rigging Portal
   - Física de aparejos con tensión por ramal, ángulo máximo y factor de seguridad.
   - Umbral preventivo para equipos auxiliares de izaje.
 - Botones de exportación para generar PDF local del escenario evaluado.
+- Calculadora con configuraciones para grúa móvil, grúa torre, puente/pórtico, tándem,
+  aparejos, tecles/winches y otros equipos.
+- Memoria preliminar con carga de diseño, utilización, tensión de ramales y viento.
+- Plan de izaje y checklist imprimibles mediante la función de impresión del navegador.
+- Referencias de OSHA 29 CFR, NIOSH y ANSI/ASME B30. La capacidad del equipo debe
+  ingresarse desde la tabla vigente del fabricante.
 
 ## Ejecución local
 
@@ -50,6 +56,20 @@ La carpeta `Documentos UNACEM-20260802T032526Z-1-001` debe mantenerse como refer
 3. Espere la publicación y abra la URL generada.
 
 La aplicación es completamente estática, por lo que GitHub Pages es suficiente para desplegarla sin backend.
+
+## Alcance técnico y límites
+
+La aplicación es una herramienta de apoyo para planificación. No reproduce tablas
+propietarias ni sustituye el manual del fabricante, la evaluación del terreno, el
+procedimiento del empleador, la normativa local ni la aprobación de una persona
+competente. Antes de autorizar un izaje se deben verificar, como mínimo, la tabla
+de carga aplicable, inspecciones, WLL de aparejos, viento, líneas eléctricas,
+comunicaciones, zona de exclusión y plan de emergencia.
+
+La base de referencia visible en el portal incluye OSHA 29 CFR 1926 Subpart CC,
+29 CFR 1926.251, 29 CFR 1910.184, NIOSH y las familias ANSI/ASME B30.2, B30.3,
+B30.5, B30.9, B30.10, B30.16, B30.20 y B30.26. Debe confirmarse siempre la
+edición vigente y los requisitos jurisdiccionales del proyecto.
 
 ## Exportación a PDF
 
