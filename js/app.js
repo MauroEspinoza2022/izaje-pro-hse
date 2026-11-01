@@ -136,7 +136,8 @@ function renderDashboard() {
     </nav>
     <main>
       <section class="view active" id="calculator-view">
-        <div class="section-heading"><div><div class="eyebrow">Evaluación verificable</div><h1>Calculadora de izaje</h1><p class="muted">Ingrese la tabla vigente del fabricante. Sin capacidad documentada, el resultado queda bloqueado.</p></div><div class="status">● Modo mixto: t · kN · m · km/h</div></div>
+        <div class="section-heading"><div><div class="eyebrow">Evaluación verificable</div><h1>Calculadora de izaje</h1><p class="muted">Seleccione el modelo de maniobra y documente cada equipo antes de calcular.</p></div><div class="hero-visual">${craneIllustration()}</div></div>
+        <div class="model-cards">${modelCard('mobile', 'Grúa móvil', 'Radio y tabla de carga')}${modelCard('tower', 'Grúa torre', 'Pluma y configuración')}${modelCard('tandem', 'Tándem', '2 o 3 equipos')}${modelCard('hoist', 'Tecles / tirfor', 'Tracción y WLL')}</div>
         <form id="calculation-form">
           <div class="form-grid">
             <section class="panel"><h2>1. Configuración y carga</h2>
@@ -207,6 +208,20 @@ function renderDashboard() {
   renderReferences();
 }
 
+function craneIllustration() {
+  return `<svg class="crane-illustration" viewBox="0 0 220 140" aria-label="Ilustración técnica de grúa"><path d="M25 118h170M45 118V45h42M52 45h125M83 47l94 0M115 47v71M83 47l-25 71M177 47l-36 35M141 82v29M132 111h18M168 111h18" fill="none" stroke="#14365d" stroke-width="5" stroke-linecap="round"/><path d="M177 47v45l-10 10M167 102h20" fill="none" stroke="#e9a91a" stroke-width="4"/><circle cx="45" cy="122" r="8" fill="#e9a91a"/><circle cx="177" cy="122" r="8" fill="#e9a91a"/></svg>`;
+}
+
+function modelCard(value, title, description) {
+  const icons = {
+    mobile: '<path d="M7 30h34M12 30V12h12l12-5M24 12h17M36 8l-9 12M27 20v10M20 30l-5-12M10 34h8M30 34h8" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>',
+    tower: '<path d="M12 34h28M20 34V7h12v27M14 7h30M32 9l12 9M24 13h8M24 20h8M24 27h8" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>',
+    tandem: '<path d="M5 33h18M27 33h18M8 33V17h10l8-5M30 33V17h10l8-5M18 17h22M25 12v18" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>',
+    hoist: '<path d="M10 8h30M15 8v9M35 8v9M15 17h20M25 17v12l-5 5M25 29l5 5M10 38h30" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>',
+  };
+  return `<button class="model-card" data-model-card="${value}" type="button"><svg viewBox="0 0 50 50">${icons[value]}</svg><strong>${title}</strong><span>${description}</span></button>`;
+}
+
 function bindNavigation() {
   document.querySelectorAll('.tab').forEach((tab) => tab.addEventListener('click', () => {
     document.querySelectorAll('.tab, .view').forEach((element) => element.classList.remove('active'));
@@ -217,6 +232,12 @@ function bindNavigation() {
     app.style.display = 'none';
     renderLogin();
   });
+  document.querySelectorAll('[data-model-card]').forEach((card) => card.addEventListener('click', () => {
+    document.querySelector('#configuration').value = card.dataset.modelCard;
+    document.querySelector('#configuration').dispatchEvent(new Event('change'));
+    document.querySelectorAll('[data-model-card]').forEach((item) => item.classList.toggle('active', item === card));
+    document.querySelector('#configuration').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }));
 }
 
 function bindCalculator() {
