@@ -115,7 +115,7 @@ function renderDashboard() {
               ${field('dynamic', 'Factor dinámico de diseño', 1.1, 'x', '0.01')}
               ${field('radius', 'Radio de operación', 10, 'm', '0.1')}
             </section>
-            <section class="panel"><h2>2. Capacidad documentada</h2>
+            <section class="panel" data-context="capacity"><h2>2. Capacidad documentada</h2>
               <label>Registro de tabla / equipo<select name="equipmentRecord" id="equipment-record"><option value="">Seleccione un registro documentado</option></select></label>
               <label>Número de grúas<select name="craneCount" id="crane-count"><option value="1">1 grúa</option><option value="2">2 grúas</option><option value="3">3 grúas</option></select></label>
               <label>Registro grúa 2<select name="equipmentRecord2" id="equipment-record-2"><option value="">Seleccione si aplica</option></select></label>
@@ -130,7 +130,7 @@ function renderDashboard() {
               ${field('windLimit', 'Límite del fabricante / plan', 30, 'km/h', '0.1')}
               ${field('groundBearing', 'Capacidad admisible del terreno', 20, 't/m²', '0.1')}
             </section>
-            <section class="panel"><h2>3. Aparejos y geometría</h2>
+            <section class="panel" data-context="rigging"><h2>3. Aparejos y geometría</h2>
               ${field('legs', 'Ramales efectivos', 2, 'ramales', '1')}
               ${field('angle', 'Ángulo del ramal respecto a horizontal', 60, '°', '0.1')}
               ${field('slingWll', 'WLL por ramal', 4, 't', '0.01')}
@@ -139,7 +139,7 @@ function renderDashboard() {
               <label>Acreditación de equipos<select name="accreditation"><option value="yes">Vigente y disponible</option><option value="no">No disponible</option></select></label>
               ${field('projectedArea', 'Área proyectada al viento', 4, 'm²', '0.1')}
             </section>
-            <section class="panel"><h2>4. Equipos adicionales y reparto</h2>
+            <section class="panel" data-context="tandem,hoist,other"><h2>4. Equipos adicionales y reparto</h2>
               ${field('centerOffset', 'Desfase del centro de gravedad', 0, 'm', '0.1')}
               ${field('craneSpacing', 'Distancia entre grúas', 10, 'm', '0.1')}
               ${field('boomLength', 'Longitud de pluma / recorrido', 20, 'm', '0.1')}
@@ -186,6 +186,14 @@ function bindCalculator() {
   const configuration = document.querySelector('#configuration');
   const updateModelPanels = () => {
     const tandemActive = configuration.value === 'tandem' || Number(craneCount.value) > 1;
+    const activeContexts = new Set(['capacity', 'rigging', configuration.value]);
+    if (tandemActive) activeContexts.add('tandem');
+    if (configuration.value === 'hoist') activeContexts.add('hoist');
+    if (configuration.value === 'other') activeContexts.add('other');
+    document.querySelectorAll('[data-context]').forEach((panel) => {
+      const contexts = panel.dataset.context.split(',');
+      panel.style.display = contexts.some((context) => activeContexts.has(context)) ? 'block' : 'none';
+    });
     document.querySelectorAll('[data-model-panel="tandem"]').forEach((panel) => {
       panel.style.display = tandemActive ? 'block' : 'none';
     });
@@ -209,7 +217,11 @@ function bindCalculator() {
     form.elements.windLimit.value = record.windLimit || '';
     form.elements.slingWll.value = record.slingWll || '';
     form.elements.hookWll.value = record.hardwareWll || '';
-    form.elements.accreditation.value = record.verified ? 'yes' : 'no';
+    form.elements.accreditation.value = record.verified === 'yes' ? 'yes' : 'no';
+    if (record.recordConfiguration && capacityField === 'capacity') {
+      configuration.value = record.recordConfiguration;
+      configuration.dispatchEvent(new Event('change'));
+    }
   };
   if (recordSelect) recordSelect.addEventListener('change', () => applyRecord(recordSelect, 'capacity', 'chartRadius'));
   document.querySelector('#equipment-record-2').addEventListener('change', (event) => applyRecord(event.target, 'capacity2', 'radius2'));
@@ -230,6 +242,10 @@ function bindCalculator() {
       return Math.max(0.05, 1 / craneCountValue + (centerOffset / craneSpacing) * position);
     });
     const craneLoads = shareFactor.map((share) => designLoad * share);
+    const equipmentRecords = ['equipmentRecord', 'equipmentRecord2', 'equipmentRecord3']
+      .slice(0, craneCountValue)
+      .map((name) => state.library.find((record) => record.id === data.get(name)))
+      .filter(Boolean);
     const utilization = capacity ? designLoad / capacity : Infinity;
     const angle = Math.min(89.9, Math.max(0.1, number(data, 'angle')));
     const legs = Math.max(1, number(data, 'legs', 1));
@@ -245,6 +261,7 @@ function bindCalculator() {
     if (!data.get('equipmentRecord')) warnings.push('Seleccione una tabla de carga o registro documentado y vigente desde la biblioteca técnica.');
     if (craneCountValue >= 2 && !data.get('equipmentRecord2')) warnings.push('Seleccione el registro documentado de la grúa 2.');
     if (craneCountValue >= 3 && !data.get('equipmentRecord3')) warnings.push('Seleccione el registro documentado de la grúa 3.');
+    if (equipmentRecords.some((record) => record.recordConfiguration !== data.get('configuration'))) warnings.push('La configuración seleccionada no coincide con una o más tablas documentadas.');
     if (capacities.some((value) => !value) || craneRadii.some((value) => value < number(data, 'radius'))) warnings.push('Falta la capacidad de tabla de una grúa o el radio real supera el radio documentado.');
     craneLoads.forEach((loadForCrane, index) => {
       const craneUtilization = capacities[index] ? loadForCrane / capacities[index] : Infinity;
@@ -268,7 +285,7 @@ function bindCalculator() {
     if (craneCountValue > 1 && data.get('tandemSync') !== 'yes') warnings.push('El tándem requiere comunicación y sincronización probadas.');
     if (craneCountValue > 1 && data.get('tandemSequence') !== 'yes') warnings.push('El tándem requiere secuencia de toma, elevación, traslado y entrega aprobada.');
     if (craneCountValue > 1 && shareDeviation > number(data, 'maxShareDeviation', 10)) warnings.push(`El reparto tándem excede la desviación permitida (${shareDeviation.toFixed(1)}%).`);
-    state.result = { ...Object.fromEntries(data), load, designLoad, utilization, slingTension, windForce, craneLoads, capacities, craneRadii, liftPoints, loadPerPoint, groundPressure, shareDeviation, warnings, safe: warnings.length === 0 };
+    state.result = { ...Object.fromEntries(data), load, designLoad, utilization, slingTension, windForce, craneLoads, capacities, craneRadii, equipmentRecords, liftPoints, loadPerPoint, groundPressure, shareDeviation, warnings, safe: warnings.length === 0 };
     renderResult();
     renderPlan();
   });
@@ -285,6 +302,7 @@ function renderResult() {
     <section class="panel result-card ${result.safe ? 'pass' : 'fail'}"><div class="result-header"><div><div class="eyebrow">Dictamen preliminar</div><h2>${status}</h2></div><strong>${(result.utilization * 100).toFixed(1)}% utilización</strong></div>
     <div class="metrics"><div><span>Carga de diseño</span><strong>${result.designLoad.toFixed(2)} t</strong></div><div><span>Tensión por ramal</span><strong>${result.slingTension.toFixed(2)} t</strong></div><div><span>Fuerza de viento estimada</span><strong>${result.windForce.toFixed(2)} kN</strong></div></div>
     <p><strong>Reparto tándem:</strong> ${result.craneLoads.map((load, index) => `Grúa ${index + 1}: ${load.toFixed(2)} t / capacidad ${result.capacities[index].toFixed(2)} t`).join(' · ')}</p>
+    <p><strong>Documentación aplicada:</strong> ${result.equipmentRecords.length ? result.equipmentRecords.map((record) => `${record.manufacturer} ${record.recordName} (${record.revision || 'sin revisión'})`).join(' · ') : 'ninguna'}</p>
     <table class="verification-table"><tbody><tr><th>Verificación</th><th>Resultado</th><th>Criterio</th></tr><tr><td>Carga por punto de izaje</td><td>${result.loadPerPoint.toFixed(2)} t</td><td>WLL oreja ${result.lugWll} t / conector ${result.connectorWll} t</td></tr><tr><td>Presión de apoyo</td><td>${result.groundPressure.toFixed(2)} t/m²</td><td>Admisible ${result.maxGroundPressure} t/m²</td></tr><tr><td>Desviación de reparto</td><td>${result.shareDeviation.toFixed(1)}%</td><td>Máxima ${result.maxShareDeviation}%</td></tr><tr><td>Centro de gravedad</td><td>${result.cgX} m, ${result.cgY} m, ${result.cgZ} m</td><td>Verificación: ${result.stabilityVerified === 'yes' ? 'documentada' : 'pendiente'}</td></tr></tbody></table>
     <ul class="warnings">${(result.warnings.length ? result.warnings : ['Verifique físicamente el equipo, terreno, accesorios, señalero y zona de exclusión antes de autorizar.']).map((item) => `<li>${item}</li>`).join('')}</ul>
     <p class="notice">Este resultado es una verificación preliminar y no sustituye la tabla de carga, manual del fabricante ni la aprobación de una persona competente.</p></section>`;
@@ -327,16 +345,11 @@ function renderLibrary() {
       <form id="library-form" class="form-grid compact">
         ${field('recordName', 'Nombre / modelo', '', 'texto')}
         ${field('manufacturer', 'Fabricante', '', 'texto')}
-        <label>Tipo<select name="recordType"><option>Tabla de carga</option><option>Manual del fabricante</option><option>Certificado / inspección</option><option>Accesorio / aparejo</option><option>Norma / procedimiento</option></select></label>
+        <label>Tipo<select name="recordType" id="record-type"><option>Tabla de carga</option><option>Manual del fabricante</option><option>Certificado / inspección</option><option>Accesorio / aparejo</option><option>Norma / procedimiento</option></select></label>
         <label>Configuración<select name="recordConfiguration">${Object.entries(configNames).map(([key, name]) => `<option value="${key}">${name}</option>`).join('')}</select></label>
-        ${field('capacity', 'Capacidad documentada', '', 't', '0.01')}
-        ${field('radius', 'Radio o condición de tabla', '', 'm', '0.1')}
-        ${field('windLimit', 'Límite de viento', '', 'km/h', '0.1')}
-        ${field('slingWll', 'WLL de eslinga / accesorio', '', 't', '0.01')}
-        ${field('hardwareWll', 'WLL de herraje / conector', '', 't', '0.01')}
-        ${field('revision', 'Edición / revisión', '', 'texto')}
-        ${field('validUntil', 'Vigente hasta', '', 'texto')}
-        ${field('source', 'Archivo o URL de origen', '', 'texto')}
+        <div class="library-fields" data-library-group="load-chart">${field('capacity', 'Capacidad documentada', '', 't', '0.01')}${field('radius', 'Radio o condición de tabla', '', 'm', '0.1')}${field('windLimit', 'Límite de viento', '', 'km/h', '0.1')}</div>
+        <div class="library-fields" data-library-group="accessory">${field('slingWll', 'WLL de eslinga / accesorio', '', 't', '0.01')}${field('hardwareWll', 'WLL de herraje / conector', '', 't', '0.01')}</div>
+        <div class="library-fields" data-library-group="document">${field('revision', 'Edición / revisión', '', 'texto')}${field('validUntil', 'Vigente hasta', '', 'texto')}${field('source', 'Archivo o URL de origen', '', 'texto')}${field('documentRef', 'Código / páginas / ubicación', '', 'texto')}</div>
         <label>Verificación documental<select name="verified"><option value="yes">Revisado y vigente</option><option value="no">Pendiente</option></select></label>
         <label class="wide-field">Observaciones<textarea name="notes" rows="3" placeholder="Equipo, rango de radios, restricciones, páginas o condiciones de uso"></textarea></label>
         <button class="primary" type="submit">Guardar registro</button>
@@ -345,6 +358,21 @@ function renderLibrary() {
     <section class="panel"><div class="module-title"><h2>Registros guardados</h2><span>${records.length} REGISTROS</span></div>
       <div class="library-list">${records.length ? records.map((record) => `<article class="library-item"><div><strong>${record.recordName}</strong><p class="muted">${record.manufacturer} · ${record.recordType} · ${configNames[record.recordConfiguration] || 'General'}</p><small>${record.source || 'Origen no indicado'} · ${record.verified === 'yes' ? 'Verificado' : 'Pendiente'}</small></div><button class="secondary" data-delete-record="${record.id}" type="button">Eliminar</button></article>`).join('') : '<p class="notice">Aún no hay registros. Agregue la primera tabla o manual aprobado.</p>'}</div>
     </section>`;
+  const updateLibraryFields = () => {
+    const type = document.querySelector('#record-type').value;
+    const groups = {
+      'Tabla de carga': ['load-chart', 'document'],
+      'Accesorio / aparejo': ['accessory', 'document'],
+      'Manual del fabricante': ['document'],
+      'Certificado / inspección': ['document'],
+      'Norma / procedimiento': ['document'],
+    };
+    document.querySelectorAll('[data-library-group]').forEach((group) => {
+      group.style.display = groups[type].includes(group.dataset.libraryGroup) ? 'grid' : 'none';
+    });
+  };
+  document.querySelector('#record-type').addEventListener('change', updateLibraryFields);
+  updateLibraryFields();
   document.querySelector('#library-form').addEventListener('submit', (event) => {
     event.preventDefault();
     const data = Object.fromEntries(new FormData(event.currentTarget));

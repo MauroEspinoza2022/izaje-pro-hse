@@ -50,6 +50,7 @@ textarea { width: 100%; padding: .8rem .9rem; color: var(--text); border: 1px so
 .form-grid, .reference-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
 .form-grid.compact { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .wide-field { grid-column: 1 / -1; }
+.library-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; grid-column: 1 / -1; }
 .panel { padding: 1.25rem; }
 .input-unit { display: flex; align-items: center; }
 .input-unit input { border-radius: 9px 0 0 9px; }
@@ -91,4 +92,5 @@ th, td { padding: .6rem; border: 1px solid #c6d2df; text-align: left; }
 .result-list { margin: 0; padding-left: 1.1rem; color: var(--muted); line-height: 1.8; }
 .result-chip { display: inline-block; margin-bottom: .8rem; padding: .35rem .65rem; border-radius: 999px; color: #13202c; background: var(--success); font-size: .8rem; font-weight: 800; }
 @media (max-width: 800px) { .form-grid, .form-grid.compact, .reference-grid { grid-template-columns: 1fr; } .section-heading, .result-header, .metrics { display: block; } .metrics div { margin-top: .5rem; } .topbar { align-items: flex-start; } }
+@media (max-width: 800px) { .library-fields { grid-template-columns: 1fr; } }
 @media print { .topbar, .tabs, .print-button, #calculator-view, #references-view { display: none !important; } .view { display: none !important; } #plan-view.active, #checklist-view.active { display: block !important; } body { background: white; } .app-shell { padding: 0; } .panel { box-shadow: none; } }
