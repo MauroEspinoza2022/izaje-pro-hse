@@ -103,6 +103,22 @@ function engineeringFields() {
     </section>`;
 }
 
+function equipmentOptions() {
+  return `<option value="">Seleccionar registro técnico</option>${state.library.map((record) => `<option value="${record.id}">${record.manufacturer || 'Sin fabricante'} · ${record.recordName} · ${record.recordType}</option>`).join('')}`;
+}
+
+function equipmentRow(index = 0) {
+  return `<tr data-equipment-row>
+    <td><select name="equipmentRole">${['Grúa principal', 'Grúa auxiliar', 'Camión grúa', 'Grúa torre', 'Puente grúa', 'Tecle / polipasto', 'Tirfor / winche', 'Viga separadora / balancín', 'Aparejo / conector', 'Otro'].map((role) => `<option>${role}</option>`).join('')}</select></td>
+    <td><select name="equipmentRecord">${equipmentOptions()}</select></td>
+    <td><input name="equipmentQuantity" type="number" min="1" step="1" value="1"></td>
+    <td><input name="equipmentAssignedLoad" type="number" min="0" step="0.01" value="${index ? 0 : 5}"><span> t</span></td>
+    <td><input name="equipmentCapacity" type="number" min="0" step="0.01" value=""><span> t</span></td>
+    <td><select name="equipmentVerified"><option value="yes">Acreditado</option><option value="no">Pendiente</option></select></td>
+    <td><button class="secondary remove-equipment" type="button">Quitar</button></td>
+  </tr>`;
+}
+
 function renderDashboard() {
   authModal.classList.add('is-hidden');
   app.style.display = 'block';
@@ -168,6 +184,11 @@ function renderDashboard() {
             </section>
           </div>
           <div class="form-grid engineering-grid">${engineeringFields()}</div>
+          <section class="panel equipment-matrix"><div class="module-title"><h2>9. Matriz de equipos y funciones</h2><span>COMPONENTES DEL SISTEMA</span></div>
+            <p class="muted">Agregue cada grúa, camión grúa, tecle, tirfor, balancín, aparejo o conector. La carga asignada y la capacidad se validan por fila.</p>
+            <div class="table-scroll"><table class="equipment-table"><thead><tr><th>Función</th><th>Registro técnico</th><th>Cant.</th><th>Carga asignada</th><th>Capacidad/WLL</th><th>Estado</th><th></th></tr></thead><tbody id="equipment-rows">${equipmentRow()}</tbody></table></div>
+            <button class="secondary" id="add-equipment" type="button">+ Agregar equipo o accesorio</button>
+          </section>
           <div class="actions"><button class="primary" type="submit">Calcular y validar</button><button class="secondary" id="reset-form" type="button">Restablecer</button></div>
         </form>
         <div id="result" class="result-area" aria-live="polite"></div>
@@ -226,6 +247,12 @@ function bindCalculator() {
   });
   configuration.addEventListener('change', updateModelPanels);
   craneCount.dispatchEvent(new Event('change'));
+  const equipmentRows = document.querySelector('#equipment-rows');
+  document.querySelector('#add-equipment').addEventListener('click', () => {
+    equipmentRows.insertAdjacentHTML('beforeend', equipmentRow(equipmentRows.children.length));
+    bindEquipmentRow(equipmentRows.lastElementChild);
+  });
+  bindEquipmentRow(equipmentRows.firstElementChild);
   const recordSelect = document.querySelector('#equipment-record');
   const applyRecord = (select, capacityField, radiusField) => {
     const record = state.library.find((item) => item.id === select.value);
@@ -264,6 +291,12 @@ function bindCalculator() {
       .slice(0, craneCountValue)
       .map((name) => state.library.find((record) => record.id === data.get(name)))
       .filter(Boolean);
+    const equipmentData = [...document.querySelectorAll('[data-equipment-row]')].map((row) => {
+      const values = new FormData();
+      row.querySelectorAll('input, select').forEach((input) => values.set(input.name, input.value));
+      const record = state.library.find((item) => item.id === values.get('equipmentRecord'));
+      return { ...Object.fromEntries(values), record };
+    }).filter((item) => Number(item.equipmentAssignedLoad) > 0 || item.equipmentRecord);
     const utilization = capacity ? designLoad / capacity : Infinity;
     const angle = Math.min(89.9, Math.max(0.1, number(data, 'angle')));
     const legs = Math.max(1, number(data, 'legs', 1));
@@ -291,6 +324,17 @@ function bindCalculator() {
     if (slingTension * legs > number(data, 'hookWll')) warnings.push('La conexión o grilletes no soportan la carga calculada.');
     if (data.get('accreditation') !== 'yes') warnings.push('Los aparejos o accesorios no tienen acreditación vigente.');
     if (data.get('auxAccreditation') !== 'yes') warnings.push('El equipo auxiliar requiere memoria de cálculo y acreditación antes del izaje.');
+    equipmentData.forEach((item) => {
+        const assigned = Number(item.equipmentAssignedLoad) || 0;
+      if (!item.record) {
+        warnings.push(`${item.equipmentRole}: seleccione un registro técnico documentado.`);
+        return;
+      }
+      const equipmentCapacity = Number(item.equipmentCapacity || item.record.capacity || item.record.slingWll || item.record.hardwareWll || 0);
+      if (!equipmentCapacity || assigned > equipmentCapacity * Number(item.equipmentQuantity || 1)) warnings.push(`${item.equipmentRole}: la carga asignada supera su capacidad/WLL documentada.`);
+      if (item.equipmentVerified !== 'yes' || item.record.verified !== 'yes') warnings.push(`${item.equipmentRole}: equipo o documento sin acreditación vigente.`);
+    });
+    if (equipmentData.length && equipmentData.reduce((total, item) => total + Number(item.equipmentAssignedLoad || 0), 0) < designLoad) warnings.push('La suma de cargas asignadas a los equipos es menor que la carga de diseño.');
     if (loadPerPoint > number(data, 'lugWll')) warnings.push(`La carga por punto (${loadPerPoint.toFixed(2)} t) supera la capacidad de una oreja.`);
     if (loadPerPoint > number(data, 'connectorWll')) warnings.push(`La carga por punto (${loadPerPoint.toFixed(2)} t) supera la capacidad del conector crítico.`);
     if (data.get('lugInspection') !== 'yes') warnings.push('Orejas, soldaduras o puntos de izaje pendientes de inspección/certificación.');
@@ -303,13 +347,29 @@ function bindCalculator() {
     if (craneCountValue > 1 && data.get('tandemSync') !== 'yes') warnings.push('El tándem requiere comunicación y sincronización probadas.');
     if (craneCountValue > 1 && data.get('tandemSequence') !== 'yes') warnings.push('El tándem requiere secuencia de toma, elevación, traslado y entrega aprobada.');
     if (craneCountValue > 1 && shareDeviation > number(data, 'maxShareDeviation', 10)) warnings.push(`El reparto tándem excede la desviación permitida (${shareDeviation.toFixed(1)}%).`);
-    state.result = { ...Object.fromEntries(data), load, designLoad, utilization, slingTension, windForce, craneLoads, capacities, craneRadii, equipmentRecords, liftPoints, loadPerPoint, groundPressure, shareDeviation, warnings, safe: warnings.length === 0 };
+    state.result = { ...Object.fromEntries(data), load, designLoad, utilization, slingTension, windForce, craneLoads, capacities, craneRadii, equipmentRecords, equipmentData, liftPoints, loadPerPoint, groundPressure, shareDeviation, warnings, safe: warnings.length === 0 };
     renderResult();
     renderPlan();
   });
   document.querySelector('#reset-form').addEventListener('click', () => {
     form.reset();
     document.querySelector('#result').innerHTML = '';
+  });
+}
+
+function bindEquipmentRow(row) {
+  const recordSelect = row.querySelector('[name=equipmentRecord]');
+  const capacityInput = row.querySelector('[name=equipmentCapacity]');
+  const roleSelect = row.querySelector('[name=equipmentRole]');
+  recordSelect.addEventListener('change', () => {
+    const record = state.library.find((item) => item.id === recordSelect.value);
+    if (!record) return;
+    capacityInput.value = record.capacity || record.slingWll || record.hardwareWll || '';
+    row.querySelector('[name=equipmentVerified]').value = record.verified === 'yes' ? 'yes' : 'no';
+    if (record.recordType === 'Tabla de carga') roleSelect.value = record.recordConfiguration === 'mobile' ? 'Grúa principal' : roleSelect.value;
+  });
+  row.querySelector('.remove-equipment').addEventListener('click', () => {
+    if (document.querySelectorAll('[data-equipment-row]').length > 1) row.remove();
   });
 }
 
@@ -321,6 +381,7 @@ function renderResult() {
     <div class="metrics"><div><span>Carga de diseño</span><strong>${result.designLoad.toFixed(2)} t</strong></div><div><span>Tensión por ramal</span><strong>${result.slingTension.toFixed(2)} t</strong></div><div><span>Fuerza de viento estimada</span><strong>${result.windForce.toFixed(2)} kN</strong></div></div>
     <p><strong>Reparto tándem:</strong> ${result.craneLoads.map((load, index) => `Grúa ${index + 1}: ${load.toFixed(2)} t / capacidad ${result.capacities[index].toFixed(2)} t`).join(' · ')}</p>
     <p><strong>Documentación aplicada:</strong> ${result.equipmentRecords.length ? result.equipmentRecords.map((record) => `${record.manufacturer} ${record.recordName} (${record.revision || 'sin revisión'})`).join(' · ') : 'ninguna'}</p>
+    <table class="verification-table"><thead><tr><th>Equipo / función</th><th>Registro</th><th>Carga asignada</th><th>Capacidad/WLL</th><th>Estado</th></tr></thead><tbody>${result.equipmentData.map((item) => `<tr><td>${item.equipmentRole}</td><td>${item.record ? `${item.record.manufacturer} ${item.record.recordName}` : 'Sin registro'}</td><td>${item.equipmentAssignedLoad} t</td><td>${item.equipmentCapacity || (item.record && (item.record.capacity || item.record.slingWll || item.record.hardwareWll)) || 'N/D'} t</td><td>${item.equipmentVerified === 'yes' && item.record && item.record.verified === 'yes' ? 'Acreditado' : 'Pendiente'}</td></tr>`).join('')}</tbody></table>
     <table class="verification-table"><tbody><tr><th>Verificación</th><th>Resultado</th><th>Criterio</th></tr><tr><td>Carga por punto de izaje</td><td>${result.loadPerPoint.toFixed(2)} t</td><td>WLL oreja ${result.lugWll} t / conector ${result.connectorWll} t</td></tr><tr><td>Presión de apoyo</td><td>${result.groundPressure.toFixed(2)} t/m²</td><td>Admisible ${result.maxGroundPressure} t/m²</td></tr><tr><td>Desviación de reparto</td><td>${result.shareDeviation.toFixed(1)}%</td><td>Máxima ${result.maxShareDeviation}%</td></tr><tr><td>Centro de gravedad</td><td>${result.cgX} m, ${result.cgY} m, ${result.cgZ} m</td><td>Verificación: ${result.stabilityVerified === 'yes' ? 'documentada' : 'pendiente'}</td></tr></tbody></table>
     ${formulaTable(result)}
     <ul class="warnings">${(result.warnings.length ? result.warnings : ['Verifique físicamente el equipo, terreno, accesorios, señalero y zona de exclusión antes de autorizar.']).map((item) => `<li>${item}</li>`).join('')}</ul>
@@ -338,6 +399,7 @@ function renderPlan() {
       ${r ? `<table><tbody><tr><th>Configuración</th><td>${configNames[r.configuration]}</td></tr><tr><th>Carga total / diseño</th><td>${r.load.toFixed(2)} t / ${r.designLoad.toFixed(2)} t</td></tr><tr><th>Reparto por grúa</th><td>${r.craneLoads.map((load, index) => `G${index + 1}: ${load.toFixed(2)} t de ${r.capacities[index].toFixed(2)} t`).join(' · ')}</td></tr><tr><th>Radio / capacidad</th><td>${r.radius} m / ${r.capacity} t</td></tr><tr><th>Utilización máxima</th><td>${Math.max(...r.craneLoads.map((load, index) => load / r.capacities[index] * 100)).toFixed(1)}%</td></tr><tr><th>Carga por punto / apoyo</th><td>${r.loadPerPoint.toFixed(2)} t / ${r.groundPressure.toFixed(2)} t/m²</td></tr><tr><th>Trayectoria</th><td>${r.movementMode}; despeje ${r.minClearance} m de ${r.requiredClearance} m requerido</td></tr><tr><th>Dictamen</th><td>${r.safe ? 'APTO CONDICIONADO' : 'NO APTO / REVISAR'}</td></tr></tbody></table>` : '<p class="notice">Ejecute la calculadora para incorporar la memoria.</p>'}
       <h3>Controles obligatorios antes de iniciar</h3><ol class="plan-list"><li>Tabla de carga, manual, inspecciones y certificados disponibles.</li><li>Terreno, nivelación, estabilizadores y capacidad de apoyo verificados.</li><li>Rigging identificado, inspeccionado y con WLL legible.</li><li>Señalero designado, comunicación probada y zona de exclusión delimitada.</li><li>Ruta, interferencias, líneas eléctricas, clima y emergencia revisados.</li></ol>
       <h3>Controles según el modelo</h3><ol class="plan-list"><li>Centro de gravedad: (${r ? `${r.cgX}, ${r.cgY}, ${r.cgZ} m` : 'pendiente'}); validar estabilidad y evitar inclinación o giro no controlado.</li><li>Orejas, soldaduras, conectores y puntos de izaje: verificar diseño, inspección, orientación de carga y capacidad admisible.</li><li>Movimiento: documentar secuencia, velocidad, radios, despejes, obstáculos, líneas eléctricas, vientos guía y comunicación.</li><li>Tándem: validar reparto por grúa, sincronización, transferencia de carga, radios independientes y criterio de parada.</li></ol>
+      ${r ? `<h3>Equipos y funciones involucrados</h3><table><thead><tr><th>Función</th><th>Registro</th><th>Carga</th><th>Capacidad/WLL</th><th>Estado</th></tr></thead><tbody>${r.equipmentData.map((item) => `<tr><td>${item.equipmentRole}</td><td>${item.record ? `${item.record.manufacturer} ${item.record.recordName}` : 'Sin registro'}</td><td>${item.equipmentAssignedLoad} t</td><td>${item.equipmentCapacity || (item.record && (item.record.capacity || item.record.slingWll || item.record.hardwareWll)) || 'N/D'} t</td><td>${item.equipmentVerified === 'yes' && item.record && item.record.verified === 'yes' ? 'Acreditado' : 'Pendiente'}</td></tr>`).join('')}</tbody></table>` : ''}
       ${r ? formulaTable(r) : ''}
       <div class="signatures"><span>Elaboró / fecha</span><span>Revisó / fecha</span><span>Aprobó / fecha</span></div>
     </section>`;

@@ -51,6 +51,12 @@ textarea { width: 100%; padding: .8rem .9rem; color: var(--text); border: 1px so
 .form-grid.compact { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .wide-field { grid-column: 1 / -1; }
 .library-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; grid-column: 1 / -1; }
+.equipment-matrix { grid-column: 1 / -1; }
+.table-scroll { overflow-x: auto; }
+.equipment-table { min-width: 1050px; }
+.equipment-table input, .equipment-table select { min-width: 130px; padding: .55rem; }
+.equipment-table td { vertical-align: middle; }
+.equipment-table td span { color: var(--muted); font-size: .8rem; }
 .panel { padding: 1.25rem; }
 .input-unit { display: flex; align-items: center; }
 .input-unit input { border-radius: 9px 0 0 9px; }
