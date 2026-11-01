@@ -1,0 +1,2 @@
+.module-title { display: flex; justify-content: space-between; align-items: center; gap: .5rem; }
+.module-title span { color: var(--accent); font-size: .8rem; font-weight: 800; }
