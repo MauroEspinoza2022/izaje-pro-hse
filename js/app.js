@@ -14,7 +14,7 @@ function renderLogin() {
       <p class="error" id="login-error" role="alert"></p>
       <button class="primary" type="submit">Ingresar</button>
     </form>`;
-  authModal.hidden = false;
+  authModal.classList.remove('is-hidden');
   document.querySelector('#login-form').addEventListener('submit', (event) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -27,7 +27,7 @@ function renderLogin() {
 }
 
 function renderDashboard() {
-  authModal.hidden = true;
+  authModal.classList.add('is-hidden');
   app.style.display = 'block';
   app.innerHTML = `
     <header class="topbar">
