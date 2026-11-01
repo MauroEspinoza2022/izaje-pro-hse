@@ -78,6 +78,13 @@ textarea { width: 100%; padding: .8rem .9rem; color: var(--text); border: 1px so
 .plan-sheet label { color: #5b6b7e; }
 table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; }
 th, td { padding: .6rem; border: 1px solid #c6d2df; text-align: left; }
+.formula-section { margin-top: 1.25rem; }
+.formula-table-wrap { overflow-x: auto; }
+.formula-table { min-width: 980px; font-size: .82rem; }
+.formula-table th { color: #dce8f5; background: #172b43; }
+.formula-table td { vertical-align: top; }
+.formula-table td:nth-child(2) { white-space: nowrap; }
+.formula-table td:nth-child(3) { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
 .plan-list { line-height: 1.8; }
 .signatures { display: flex; justify-content: space-between; gap: 1rem; margin-top: 3rem; color: #5b6b7e; }
 .signatures span { min-width: 25%; padding-top: 2rem; border-top: 1px solid #5b6b7e; }

@@ -33,6 +33,8 @@ Nombre del proyecto: HAUG SSOMA Rigging Portal
 - Calculadora con configuraciones para grúa móvil, grúa torre, puente/pórtico, tándem,
   aparejos, tecles/winches y otros equipos.
 - Memoria preliminar con carga de diseño, utilización, tensión de ramales y viento.
+- Trazabilidad de fórmulas: muestra fórmula, sustitución numérica, unidad,
+  fuente del dato y restricción aplicada para cada resultado.
 - Controles de modelo para centro de gravedad, estabilidad, presión de apoyo,
   trayectoria, despejes, movimiento, orejas, soldaduras, conectores y puntos de izaje.
 - En tándem: reparto por centro de gravedad, radios independientes, desviación de

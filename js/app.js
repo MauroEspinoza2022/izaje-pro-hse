@@ -47,6 +47,24 @@ function number(form, name, fallback = 0) {
   return Number.isFinite(value) ? value : fallback;
 }
 
+function formatValue(value, decimals = 2) {
+  return Number.isFinite(Number(value)) ? Number(value).toFixed(decimals) : 'N/D';
+}
+
+function formulaTable(result) {
+  const rows = [
+    ['Carga total', 'Carga neta + aparejos + dispositivo bajo gancho', `${result.payload} + ${result.rigging} + ${result.belowHook}`, `${formatValue(result.load)} t`, 'Datos ingresados en la calculadora'],
+    ['Carga de diseño', 'Carga total × factor dinámico', `${formatValue(result.load)} × ${result.dynamic}`, `${formatValue(result.designLoad)} t`, 'Factor del plan / criterio de ingeniería'],
+    ['Utilización', 'Carga de diseño ÷ capacidad de tabla × 100', `${formatValue(result.designLoad)} ÷ ${result.capacity} × 100`, `${formatValue(result.utilization * 100, 1)} %`, 'Tabla de carga seleccionada'],
+    ['Tensión por ramal', 'Carga de diseño ÷ (ramales × sen(ángulo))', `${formatValue(result.designLoad)} ÷ (${result.legs} × sen(${result.angle}°))`, `${formatValue(result.slingTension)} t`, 'Geometría ingresada; ASME B30.9 como referencia de uso seguro'],
+    ['Fuerza de viento', '0.5 × ρ × Cd × área × velocidad² ÷ g', `0.5 × 1.225 × 0.9 × ${result.projectedArea} × (${result.wind} ÷ 3.6)² ÷ 9.80665`, `${formatValue(result.windForce)} kN`, 'Estimación; prevalece límite del fabricante'],
+    ['Carga por punto', 'Carga de diseño ÷ puntos efectivos', `${formatValue(result.designLoad)} ÷ ${result.liftPoints}`, `${formatValue(result.loadPerPoint)} t`, 'Plano/certificado de orejas y puntos de izaje'],
+    ['Presión de apoyo', 'Carga de diseño ÷ área efectiva', `${formatValue(result.designLoad)} ÷ ${result.supportArea}`, `${formatValue(result.groundPressure)} t/m²`, 'Estudio de suelo y apoyos'],
+    ['Reparto tándem', '(1 ÷ n) ajustado por desfase del CG / separación', `${result.craneCount} grúas; CG ${result.centerOffset} m; separación ${result.craneSpacing} m`, result.craneLoads.map((load, index) => `G${index + 1}: ${formatValue(load)} t`).join(' · '), 'Centro de gravedad y secuencia aprobada'],
+  ];
+  return `<div class="formula-section"><h3>Memoria de fórmulas y trazabilidad</h3><p class="muted">Cada valor se muestra con su sustitución. Los límites del fabricante y la revisión de una persona competente prevalecen.</p><div class="formula-table-wrap"><table class="verification-table formula-table"><thead><tr><th>Concepto</th><th>Fórmula</th><th>Sustitución</th><th>Resultado</th><th>Fuente / restricción</th></tr></thead><tbody>${rows.map((row) => `<tr>${row.map((cell) => `<td>${cell}</td>`).join('')}</tr>`).join('')}</tbody></table></div></div>`;
+}
+
 function field(name, label, value, unit, step = 'any') {
   const isText = unit === 'texto' || unit === 'nombre' || unit === 'ID';
   return `<label>${label}<div class="input-unit"><input name="${name}" value="${value}" type="${isText ? 'text' : 'number'}" ${isText ? '' : 'min="0"'} step="${step}" ${isText ? '' : 'required'}><span>${unit}</span></div></label>`;
@@ -304,6 +322,7 @@ function renderResult() {
     <p><strong>Reparto tándem:</strong> ${result.craneLoads.map((load, index) => `Grúa ${index + 1}: ${load.toFixed(2)} t / capacidad ${result.capacities[index].toFixed(2)} t`).join(' · ')}</p>
     <p><strong>Documentación aplicada:</strong> ${result.equipmentRecords.length ? result.equipmentRecords.map((record) => `${record.manufacturer} ${record.recordName} (${record.revision || 'sin revisión'})`).join(' · ') : 'ninguna'}</p>
     <table class="verification-table"><tbody><tr><th>Verificación</th><th>Resultado</th><th>Criterio</th></tr><tr><td>Carga por punto de izaje</td><td>${result.loadPerPoint.toFixed(2)} t</td><td>WLL oreja ${result.lugWll} t / conector ${result.connectorWll} t</td></tr><tr><td>Presión de apoyo</td><td>${result.groundPressure.toFixed(2)} t/m²</td><td>Admisible ${result.maxGroundPressure} t/m²</td></tr><tr><td>Desviación de reparto</td><td>${result.shareDeviation.toFixed(1)}%</td><td>Máxima ${result.maxShareDeviation}%</td></tr><tr><td>Centro de gravedad</td><td>${result.cgX} m, ${result.cgY} m, ${result.cgZ} m</td><td>Verificación: ${result.stabilityVerified === 'yes' ? 'documentada' : 'pendiente'}</td></tr></tbody></table>
+    ${formulaTable(result)}
     <ul class="warnings">${(result.warnings.length ? result.warnings : ['Verifique físicamente el equipo, terreno, accesorios, señalero y zona de exclusión antes de autorizar.']).map((item) => `<li>${item}</li>`).join('')}</ul>
     <p class="notice">Este resultado es una verificación preliminar y no sustituye la tabla de carga, manual del fabricante ni la aprobación de una persona competente.</p></section>`;
 }
@@ -319,6 +338,7 @@ function renderPlan() {
       ${r ? `<table><tbody><tr><th>Configuración</th><td>${configNames[r.configuration]}</td></tr><tr><th>Carga total / diseño</th><td>${r.load.toFixed(2)} t / ${r.designLoad.toFixed(2)} t</td></tr><tr><th>Reparto por grúa</th><td>${r.craneLoads.map((load, index) => `G${index + 1}: ${load.toFixed(2)} t de ${r.capacities[index].toFixed(2)} t`).join(' · ')}</td></tr><tr><th>Radio / capacidad</th><td>${r.radius} m / ${r.capacity} t</td></tr><tr><th>Utilización máxima</th><td>${Math.max(...r.craneLoads.map((load, index) => load / r.capacities[index] * 100)).toFixed(1)}%</td></tr><tr><th>Carga por punto / apoyo</th><td>${r.loadPerPoint.toFixed(2)} t / ${r.groundPressure.toFixed(2)} t/m²</td></tr><tr><th>Trayectoria</th><td>${r.movementMode}; despeje ${r.minClearance} m de ${r.requiredClearance} m requerido</td></tr><tr><th>Dictamen</th><td>${r.safe ? 'APTO CONDICIONADO' : 'NO APTO / REVISAR'}</td></tr></tbody></table>` : '<p class="notice">Ejecute la calculadora para incorporar la memoria.</p>'}
       <h3>Controles obligatorios antes de iniciar</h3><ol class="plan-list"><li>Tabla de carga, manual, inspecciones y certificados disponibles.</li><li>Terreno, nivelación, estabilizadores y capacidad de apoyo verificados.</li><li>Rigging identificado, inspeccionado y con WLL legible.</li><li>Señalero designado, comunicación probada y zona de exclusión delimitada.</li><li>Ruta, interferencias, líneas eléctricas, clima y emergencia revisados.</li></ol>
       <h3>Controles según el modelo</h3><ol class="plan-list"><li>Centro de gravedad: (${r ? `${r.cgX}, ${r.cgY}, ${r.cgZ} m` : 'pendiente'}); validar estabilidad y evitar inclinación o giro no controlado.</li><li>Orejas, soldaduras, conectores y puntos de izaje: verificar diseño, inspección, orientación de carga y capacidad admisible.</li><li>Movimiento: documentar secuencia, velocidad, radios, despejes, obstáculos, líneas eléctricas, vientos guía y comunicación.</li><li>Tándem: validar reparto por grúa, sincronización, transferencia de carga, radios independientes y criterio de parada.</li></ol>
+      ${r ? formulaTable(r) : ''}
       <div class="signatures"><span>Elaboró / fecha</span><span>Revisó / fecha</span><span>Aprobó / fecha</span></div>
     </section>`;
 }
