@@ -4,6 +4,7 @@ const state = {
   result: null,
   plan: {},
   checks: new Set(),
+  library: JSON.parse(localStorage.getItem('haug-lift-library') || '[]'),
 };
 
 const configNames = {
@@ -96,6 +97,7 @@ function renderDashboard() {
       <button class="tab active" data-tab="calculator">Calculadora</button>
       <button class="tab" data-tab="plan">Plan de izaje</button>
       <button class="tab" data-tab="checklist">Checklist</button>
+      <button class="tab" data-tab="library">Biblioteca técnica</button>
       <button class="tab" data-tab="references">Normativa</button>
     </nav>
     <main>
@@ -114,9 +116,12 @@ function renderDashboard() {
               ${field('radius', 'Radio de operación', 10, 'm', '0.1')}
             </section>
             <section class="panel"><h2>2. Capacidad documentada</h2>
+              <label>Registro de tabla / equipo<select name="equipmentRecord" id="equipment-record"><option value="">Seleccione un registro documentado</option></select></label>
               <label>Número de grúas<select name="craneCount" id="crane-count"><option value="1">1 grúa</option><option value="2">2 grúas</option><option value="3">3 grúas</option></select></label>
-              ${field('capacity', 'Capacidad de tabla a esta configuración', 8, 't', '0.01')}
-              ${field('chartRadius', 'Radio correspondiente de la tabla', 10, 'm', '0.1')}
+              <label>Registro grúa 2<select name="equipmentRecord2" id="equipment-record-2"><option value="">Seleccione si aplica</option></select></label>
+              <label>Registro grúa 3<select name="equipmentRecord3" id="equipment-record-3"><option value="">Seleccione si aplica</option></select></label>
+              ${field('capacity', 'Capacidad de tabla a esta configuración', '', 't', '0.01')}
+              ${field('chartRadius', 'Radio correspondiente de la tabla', '', 'm', '0.1')}
               ${field('capacity2', 'Capacidad grúa 2 (tándem)', 8, 't', '0.01')}
               ${field('capacity3', 'Capacidad grúa 3 (tándem)', 8, 't', '0.01')}
               ${field('radius2', 'Radio grúa 2 (tándem)', 10, 'm', '0.1')}
@@ -151,12 +156,15 @@ function renderDashboard() {
       </section>
       <section class="view" id="plan-view"><div id="plan-content"></div></section>
       <section class="view" id="checklist-view"><div id="checklist-content"></div></section>
+      <section class="view" id="library-view"><div id="library-content"></div></section>
       <section class="view" id="references-view"><div id="references-content"></div></section>
     </main>`;
   bindNavigation();
   bindCalculator();
   renderPlan();
   renderChecklist();
+  renderLibrary();
+  bindEquipmentRecords();
   renderReferences();
 }
 
@@ -192,6 +200,20 @@ function bindCalculator() {
   });
   configuration.addEventListener('change', updateModelPanels);
   craneCount.dispatchEvent(new Event('change'));
+  const recordSelect = document.querySelector('#equipment-record');
+  const applyRecord = (select, capacityField, radiusField) => {
+    const record = state.library.find((item) => item.id === select.value);
+    if (!record) return;
+    form.elements[capacityField].value = record.capacity || '';
+    form.elements[radiusField].value = record.radius || '';
+    form.elements.windLimit.value = record.windLimit || '';
+    form.elements.slingWll.value = record.slingWll || '';
+    form.elements.hookWll.value = record.hardwareWll || '';
+    form.elements.accreditation.value = record.verified ? 'yes' : 'no';
+  };
+  if (recordSelect) recordSelect.addEventListener('change', () => applyRecord(recordSelect, 'capacity', 'chartRadius'));
+  document.querySelector('#equipment-record-2').addEventListener('change', (event) => applyRecord(event.target, 'capacity2', 'radius2'));
+  document.querySelector('#equipment-record-3').addEventListener('change', (event) => applyRecord(event.target, 'capacity3', 'radius3'));
   form.addEventListener('submit', (event) => {
     event.preventDefault();
     const data = new FormData(form);
@@ -220,6 +242,9 @@ function bindCalculator() {
     const minShare = Math.min(...shareFactor);
     const shareDeviation = minShare ? ((maxShare - minShare) / minShare) * 100 : Infinity;
     const warnings = [];
+    if (!data.get('equipmentRecord')) warnings.push('Seleccione una tabla de carga o registro documentado y vigente desde la biblioteca técnica.');
+    if (craneCountValue >= 2 && !data.get('equipmentRecord2')) warnings.push('Seleccione el registro documentado de la grúa 2.');
+    if (craneCountValue >= 3 && !data.get('equipmentRecord3')) warnings.push('Seleccione el registro documentado de la grúa 3.');
     if (capacities.some((value) => !value) || craneRadii.some((value) => value < number(data, 'radius'))) warnings.push('Falta la capacidad de tabla de una grúa o el radio real supera el radio documentado.');
     craneLoads.forEach((loadForCrane, index) => {
       const craneUtilization = capacities[index] ? loadForCrane / capacities[index] : Infinity;
@@ -289,11 +314,67 @@ function renderChecklist() {
   }));
 }
 
+function persistLibrary() {
+  localStorage.setItem('haug-lift-library', JSON.stringify(state.library));
+}
+
+function renderLibrary() {
+  const records = state.library;
+  document.querySelector('#library-content').innerHTML = `
+    <div class="section-heading"><div><div class="eyebrow">Datos controlados</div><h1>Biblioteca técnica</h1><p class="muted">Registre tablas del fabricante, manuales, certificados y documentos normativos. Los datos se guardan en este navegador.</p></div></div>
+    <section class="panel">
+      <h2>Agregar equipo o documento</h2>
+      <form id="library-form" class="form-grid compact">
+        ${field('recordName', 'Nombre / modelo', '', 'texto')}
+        ${field('manufacturer', 'Fabricante', '', 'texto')}
+        <label>Tipo<select name="recordType"><option>Tabla de carga</option><option>Manual del fabricante</option><option>Certificado / inspección</option><option>Accesorio / aparejo</option><option>Norma / procedimiento</option></select></label>
+        <label>Configuración<select name="recordConfiguration">${Object.entries(configNames).map(([key, name]) => `<option value="${key}">${name}</option>`).join('')}</select></label>
+        ${field('capacity', 'Capacidad documentada', '', 't', '0.01')}
+        ${field('radius', 'Radio o condición de tabla', '', 'm', '0.1')}
+        ${field('windLimit', 'Límite de viento', '', 'km/h', '0.1')}
+        ${field('slingWll', 'WLL de eslinga / accesorio', '', 't', '0.01')}
+        ${field('hardwareWll', 'WLL de herraje / conector', '', 't', '0.01')}
+        ${field('revision', 'Edición / revisión', '', 'texto')}
+        ${field('validUntil', 'Vigente hasta', '', 'texto')}
+        ${field('source', 'Archivo o URL de origen', '', 'texto')}
+        <label>Verificación documental<select name="verified"><option value="yes">Revisado y vigente</option><option value="no">Pendiente</option></select></label>
+        <label class="wide-field">Observaciones<textarea name="notes" rows="3" placeholder="Equipo, rango de radios, restricciones, páginas o condiciones de uso"></textarea></label>
+        <button class="primary" type="submit">Guardar registro</button>
+      </form>
+    </section>
+    <section class="panel"><div class="module-title"><h2>Registros guardados</h2><span>${records.length} REGISTROS</span></div>
+      <div class="library-list">${records.length ? records.map((record) => `<article class="library-item"><div><strong>${record.recordName}</strong><p class="muted">${record.manufacturer} · ${record.recordType} · ${configNames[record.recordConfiguration] || 'General'}</p><small>${record.source || 'Origen no indicado'} · ${record.verified === 'yes' ? 'Verificado' : 'Pendiente'}</small></div><button class="secondary" data-delete-record="${record.id}" type="button">Eliminar</button></article>`).join('') : '<p class="notice">Aún no hay registros. Agregue la primera tabla o manual aprobado.</p>'}</div>
+    </section>`;
+  document.querySelector('#library-form').addEventListener('submit', (event) => {
+    event.preventDefault();
+    const data = Object.fromEntries(new FormData(event.currentTarget));
+    state.library.unshift({ ...data, id: crypto.randomUUID(), createdAt: new Date().toISOString() });
+    persistLibrary();
+    renderLibrary();
+    bindEquipmentRecords();
+  });
+  document.querySelectorAll('[data-delete-record]').forEach((button) => button.addEventListener('click', () => {
+    state.library = state.library.filter((record) => record.id !== button.dataset.deleteRecord);
+    persistLibrary();
+    renderLibrary();
+    bindEquipmentRecords();
+  }));
+}
+
+function bindEquipmentRecords() {
+  const selectors = [document.querySelector('#equipment-record'), document.querySelector('#equipment-record-2'), document.querySelector('#equipment-record-3')];
+  const options = state.library.filter((record) => record.recordType === 'Tabla de carga' && record.verified === 'yes').map((record) => `<option value="${record.id}">${record.manufacturer} · ${record.recordName}</option>`).join('');
+  selectors.forEach((selector, index) => {
+    if (selector) selector.innerHTML = `<option value="">${index === 0 ? 'Seleccione un registro documentado' : 'Seleccione si aplica'}</option>${options}`;
+  });
+}
+
 function renderReferences() {
   document.querySelector('#references-content').innerHTML = `<div class="section-heading"><div><div class="eyebrow">Base técnica</div><h1>Normativa y límites de uso</h1><p class="muted">La aplicación apoya la planificación; la edición vigente y los requisitos locales prevalecen.</p></div></div><div class="reference-grid">
     <section class="panel"><h2>OSHA</h2><ul class="result-list"><li>29 CFR 1926 Subpart CC: grúas y torres, operación, inspección, señales, zonas de trabajo y condiciones del terreno.</li><li>29 CFR 1926.251: equipos y materiales de izaje, inspección y retiro de elementos defectuosos.</li><li>29 CFR 1910.184: eslingas.</li></ul></section>
     <section class="panel"><h2>ANSI / ASME B30</h2><ul class="result-list"><li>B30.5: grúas móviles y locomotoras.</li><li>B30.3: grúas torre; B30.2: puente grúa y pórtico; B30.16: tecles.</li><li>B30.9: eslingas; B30.10: ganchos; B30.20: dispositivos bajo gancho; B30.26: herrajes.</li></ul></section>
-    <section class="panel"><h2>NIOSH y gestión HSE</h2><ul class="result-list"><li>Aplicar jerarquía de controles, evaluación de peligros, capacitación, comunicación y control de líneas eléctricas.</li><li>Incorporar requisitos del fabricante, autoridad local, ambiente de trabajo y procedimiento del empleador.</li></ul></section>
+    <section class="panel"><h2>NIOSH y gestión HSE</h2><ul class="result-list"><li>Aplicar jerarquía de controles, evaluación de peligros, capacitación, comunicación y control de líneas eléctricas.</li><li>Incorporar requisitos del fabricante, autoridad local, ambiente de trabajo y procedimiento del empleador.</li><li>Fuentes recomendadas: NIOSH Fatality Assessment and Control Evaluation (FACE), NIOSH crane stability toolbox talk y OSHA OSHA 29 CFR 1926 Subpart CC.</li></ul></section>
+    <section class="panel"><h2>Documentos recomendados para cargar</h2><ul class="result-list"><li>Tabla de carga vigente por modelo, configuración, contrapeso, pluma, radio y estabilizadores.</li><li>Manual de operación, inspección y mantenimiento del fabricante.</li><li>Certificados de inspección, calibración, competencia del operador/señalero y aparejos.</li><li>Planos y memoria de orejas, soldaduras, vigas separadoras, balancines y conectores.</li><li>Procedimiento corporativo, IPERC/JSA, permiso de izaje, plano de ruta y estudio de suelo.</li></ul></section>
     <section class="panel"><h2>Limitación profesional</h2><p class="muted">No se reproducen tablas propietarias. La capacidad debe provenir del fabricante. La utilización, tensión, viento y advertencias son cálculos de apoyo; no certifican estabilidad, estructura, suelo ni aptitud del equipo.</p></section>
   </div>`;
 }
