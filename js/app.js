@@ -51,6 +51,39 @@ function field(name, label, value, unit, step = 'any') {
   return `<label>${label}<div class="input-unit"><input name="${name}" value="${value}" type="${isText ? 'text' : 'number'}" ${isText ? '' : 'min="0"'} step="${step}" ${isText ? '' : 'required'}><span>${unit}</span></div></label>`;
 }
 
+function engineeringFields() {
+  return `
+    <section class="panel" data-model-panel="all"><h2>5. Geometría, centro de gravedad y estabilidad</h2>
+      ${field('cgX', 'Centro de gravedad longitudinal', 0, 'm', '0.01')}
+      ${field('cgY', 'Centro de gravedad transversal', 0, 'm', '0.01')}
+      ${field('cgZ', 'Altura del centro de gravedad', 2, 'm', '0.01')}
+      ${field('supportArea', 'Área efectiva de apoyo', 4, 'm²', '0.01')}
+      ${field('maxGroundPressure', 'Presión admisible del terreno', 20, 't/m²', '0.1')}
+      <label>Estabilidad / cálculo estructural<select name="stabilityVerified"><option value="yes">Verificada por persona competente</option><option value="no">Pendiente de verificar</option></select></label>
+    </section>
+    <section class="panel" data-model-panel="lifting-points"><h2>6. Orejas, puntos de izaje y conectores</h2>
+      ${field('liftPoints', 'Puntos de izaje efectivos', 2, 'puntos', '1')}
+      ${field('lugWll', 'Capacidad admisible de cada oreja', 8, 't', '0.01')}
+      ${field('connectorWll', 'Capacidad del conector crítico', 8, 't', '0.01')}
+      <label>Inspección de orejas y soldaduras<select name="lugInspection"><option value="yes">Inspeccionadas / certificadas</option><option value="no">Pendientes</option></select></label>
+      <label>Orientación de conectores<select name="connectorOrientation"><option>En línea con la carga</option><option>Con componente lateral</option></select></label>
+    </section>
+    <section class="panel" data-model-panel="movement"><h2>7. Movimiento, trayectoria y control</h2>
+      <label>Tipo de maniobra<select name="movementMode"><option value="lift">Elevación vertical</option><option value="travel">Traslado con carga suspendida</option><option value="rotate">Giro / reorientación</option><option value="place">Posicionamiento de precisión</option></select></label>
+      ${field('routeLength', 'Longitud de trayectoria', 10, 'm', '0.1')}
+      ${field('travelSpeed', 'Velocidad máxima prevista', 0.5, 'km/h', '0.1')}
+      ${field('minClearance', 'Separación libre mínima', 2, 'm', '0.1')}
+      ${field('requiredClearance', 'Separación requerida por plan', 1, 'm', '0.1')}
+      <label>Ruta, interferencias y líneas eléctricas<select name="routeVerified"><option value="yes">Verificadas en campo</option><option value="no">Pendientes</option></select></label>
+      <label>Control de carga / vientos guía<select name="loadControl"><option value="yes">Definido y disponible</option><option value="no">Pendiente</option></select></label>
+    </section>
+    <section class="panel" data-model-panel="tandem"><h2>8. Coordinación tándem</h2>
+      <label>Sincronización de operadores<select name="tandemSync"><option value="yes">Procedimiento y comunicación probados</option><option value="no">Pendientes</option></select></label>
+      <label>Secuencia de toma y transferencia<select name="tandemSequence"><option value="yes">Definida paso a paso</option><option value="no">Pendiente</option></select></label>
+      ${field('maxShareDeviation', 'Desviación máxima permitida de reparto', 10, '%', '0.1')}
+    </section>`;
+}
+
 function renderDashboard() {
   authModal.classList.add('is-hidden');
   app.style.display = 'block';
@@ -111,6 +144,7 @@ function renderDashboard() {
               <p class="muted">En tándem, ingrese la capacidad de cada grúa en su radio real y documente el reparto aprobado.</p>
             </section>
           </div>
+          <div class="form-grid engineering-grid">${engineeringFields()}</div>
           <div class="actions"><button class="primary" type="submit">Calcular y validar</button><button class="secondary" id="reset-form" type="button">Restablecer</button></div>
         </form>
         <div id="result" class="result-area" aria-live="polite"></div>
@@ -141,13 +175,22 @@ function bindNavigation() {
 function bindCalculator() {
   const form = document.querySelector('#calculation-form');
   const craneCount = document.querySelector('#crane-count');
+  const configuration = document.querySelector('#configuration');
+  const updateModelPanels = () => {
+    const tandemActive = configuration.value === 'tandem' || Number(craneCount.value) > 1;
+    document.querySelectorAll('[data-model-panel="tandem"]').forEach((panel) => {
+      panel.style.display = tandemActive ? 'block' : 'none';
+    });
+  };
   craneCount.addEventListener('change', () => {
     const count = Number(craneCount.value);
     document.querySelector('[name=capacity2]').closest('label').style.display = count >= 2 ? 'grid' : 'none';
     document.querySelector('[name=capacity3]').closest('label').style.display = count >= 3 ? 'grid' : 'none';
     document.querySelector('[name=radius2]').closest('label').style.display = count >= 2 ? 'grid' : 'none';
     document.querySelector('[name=radius3]').closest('label').style.display = count >= 3 ? 'grid' : 'none';
+    updateModelPanels();
   });
+  configuration.addEventListener('change', updateModelPanels);
   craneCount.dispatchEvent(new Event('change'));
   form.addEventListener('submit', (event) => {
     event.preventDefault();
@@ -170,6 +213,12 @@ function bindCalculator() {
     const legs = Math.max(1, number(data, 'legs', 1));
     const slingTension = designLoad / (legs * Math.sin(angle * Math.PI / 180));
     const windForce = 0.5 * 1.225 * 0.9 * number(data, 'projectedArea') * (number(data, 'wind') / 3.6) ** 2 / 9.80665;
+    const liftPoints = Math.max(1, number(data, 'liftPoints', 1));
+    const loadPerPoint = designLoad / liftPoints;
+    const groundPressure = designLoad / Math.max(0.01, number(data, 'supportArea'));
+    const maxShare = Math.max(...shareFactor);
+    const minShare = Math.min(...shareFactor);
+    const shareDeviation = minShare ? ((maxShare - minShare) / minShare) * 100 : Infinity;
     const warnings = [];
     if (capacities.some((value) => !value) || craneRadii.some((value) => value < number(data, 'radius'))) warnings.push('Falta la capacidad de tabla de una grúa o el radio real supera el radio documentado.');
     craneLoads.forEach((loadForCrane, index) => {
@@ -182,7 +231,19 @@ function bindCalculator() {
     if (slingTension * legs > number(data, 'hookWll')) warnings.push('La conexión o grilletes no soportan la carga calculada.');
     if (data.get('accreditation') !== 'yes') warnings.push('Los aparejos o accesorios no tienen acreditación vigente.');
     if (data.get('auxAccreditation') !== 'yes') warnings.push('El equipo auxiliar requiere memoria de cálculo y acreditación antes del izaje.');
-    state.result = { ...Object.fromEntries(data), load, designLoad, utilization, slingTension, windForce, craneLoads, capacities, craneRadii, warnings, safe: warnings.length === 0 };
+    if (loadPerPoint > number(data, 'lugWll')) warnings.push(`La carga por punto (${loadPerPoint.toFixed(2)} t) supera la capacidad de una oreja.`);
+    if (loadPerPoint > number(data, 'connectorWll')) warnings.push(`La carga por punto (${loadPerPoint.toFixed(2)} t) supera la capacidad del conector crítico.`);
+    if (data.get('lugInspection') !== 'yes') warnings.push('Orejas, soldaduras o puntos de izaje pendientes de inspección/certificación.');
+    if (data.get('connectorOrientation') === 'Con componente lateral') warnings.push('El componente lateral del conector requiere verificación estructural específica.');
+    if (groundPressure > number(data, 'maxGroundPressure')) warnings.push(`Presión estimada de apoyo (${groundPressure.toFixed(2)} t/m²) supera la admisible.`);
+    if (data.get('stabilityVerified') !== 'yes') warnings.push('La estabilidad global y el centro de gravedad no han sido verificados por persona competente.');
+    if (number(data, 'minClearance') < number(data, 'requiredClearance')) warnings.push('La trayectoria no cumple la separación libre mínima requerida.');
+    if (data.get('routeVerified') !== 'yes') warnings.push('Ruta, interferencias y líneas eléctricas pendientes de verificación en campo.');
+    if (data.get('loadControl') !== 'yes') warnings.push('Falta definir control de carga, vientos guía o método de retención.');
+    if (craneCountValue > 1 && data.get('tandemSync') !== 'yes') warnings.push('El tándem requiere comunicación y sincronización probadas.');
+    if (craneCountValue > 1 && data.get('tandemSequence') !== 'yes') warnings.push('El tándem requiere secuencia de toma, elevación, traslado y entrega aprobada.');
+    if (craneCountValue > 1 && shareDeviation > number(data, 'maxShareDeviation', 10)) warnings.push(`El reparto tándem excede la desviación permitida (${shareDeviation.toFixed(1)}%).`);
+    state.result = { ...Object.fromEntries(data), load, designLoad, utilization, slingTension, windForce, craneLoads, capacities, craneRadii, liftPoints, loadPerPoint, groundPressure, shareDeviation, warnings, safe: warnings.length === 0 };
     renderResult();
     renderPlan();
   });
@@ -199,6 +260,7 @@ function renderResult() {
     <section class="panel result-card ${result.safe ? 'pass' : 'fail'}"><div class="result-header"><div><div class="eyebrow">Dictamen preliminar</div><h2>${status}</h2></div><strong>${(result.utilization * 100).toFixed(1)}% utilización</strong></div>
     <div class="metrics"><div><span>Carga de diseño</span><strong>${result.designLoad.toFixed(2)} t</strong></div><div><span>Tensión por ramal</span><strong>${result.slingTension.toFixed(2)} t</strong></div><div><span>Fuerza de viento estimada</span><strong>${result.windForce.toFixed(2)} kN</strong></div></div>
     <p><strong>Reparto tándem:</strong> ${result.craneLoads.map((load, index) => `Grúa ${index + 1}: ${load.toFixed(2)} t / capacidad ${result.capacities[index].toFixed(2)} t`).join(' · ')}</p>
+    <table class="verification-table"><tbody><tr><th>Verificación</th><th>Resultado</th><th>Criterio</th></tr><tr><td>Carga por punto de izaje</td><td>${result.loadPerPoint.toFixed(2)} t</td><td>WLL oreja ${result.lugWll} t / conector ${result.connectorWll} t</td></tr><tr><td>Presión de apoyo</td><td>${result.groundPressure.toFixed(2)} t/m²</td><td>Admisible ${result.maxGroundPressure} t/m²</td></tr><tr><td>Desviación de reparto</td><td>${result.shareDeviation.toFixed(1)}%</td><td>Máxima ${result.maxShareDeviation}%</td></tr><tr><td>Centro de gravedad</td><td>${result.cgX} m, ${result.cgY} m, ${result.cgZ} m</td><td>Verificación: ${result.stabilityVerified === 'yes' ? 'documentada' : 'pendiente'}</td></tr></tbody></table>
     <ul class="warnings">${(result.warnings.length ? result.warnings : ['Verifique físicamente el equipo, terreno, accesorios, señalero y zona de exclusión antes de autorizar.']).map((item) => `<li>${item}</li>`).join('')}</ul>
     <p class="notice">Este resultado es una verificación preliminar y no sustituye la tabla de carga, manual del fabricante ni la aprobación de una persona competente.</p></section>`;
 }
@@ -211,8 +273,9 @@ function renderPlan() {
       <div class="plan-title"><img src="assets/haug-logo.svg" alt="HAUG"><div><h2>PLAN DE IZAJE Y EVALUACIÓN DE RIESGOS</h2><p>Portal SSOMA · Versión 1.0 · Fecha: ${new Date().toLocaleDateString('es-PE')}</p></div></div>
       <div class="form-grid compact">${field('project', 'Proyecto / frente', '', 'texto')} ${field('location', 'Ubicación', '', 'texto')} ${field('supervisor', 'Persona competente', '', 'nombre')} ${field('equipmentId', 'Equipo / código', '', 'ID')}</div>
       <h3>Resultado de la memoria de cálculo</h3>
-      ${r ? `<table><tbody><tr><th>Configuración</th><td>${configNames[r.configuration]}</td></tr><tr><th>Carga total / diseño</th><td>${r.load.toFixed(2)} t / ${r.designLoad.toFixed(2)} t</td></tr><tr><th>Reparto por grúa</th><td>${r.craneLoads.map((load, index) => `G${index + 1}: ${load.toFixed(2)} t de ${r.capacities[index].toFixed(2)} t`).join(' · ')}</td></tr><tr><th>Radio / capacidad</th><td>${r.radius} m / ${r.capacity} t</td></tr><tr><th>Utilización máxima</th><td>${Math.max(...r.craneLoads.map((load, index) => load / r.capacities[index] * 100)).toFixed(1)}%</td></tr><tr><th>Dictamen</th><td>${r.safe ? 'APTO CONDICIONADO' : 'NO APTO / REVISAR'}</td></tr></tbody></table>` : '<p class="notice">Ejecute la calculadora para incorporar la memoria.</p>'}
+      ${r ? `<table><tbody><tr><th>Configuración</th><td>${configNames[r.configuration]}</td></tr><tr><th>Carga total / diseño</th><td>${r.load.toFixed(2)} t / ${r.designLoad.toFixed(2)} t</td></tr><tr><th>Reparto por grúa</th><td>${r.craneLoads.map((load, index) => `G${index + 1}: ${load.toFixed(2)} t de ${r.capacities[index].toFixed(2)} t`).join(' · ')}</td></tr><tr><th>Radio / capacidad</th><td>${r.radius} m / ${r.capacity} t</td></tr><tr><th>Utilización máxima</th><td>${Math.max(...r.craneLoads.map((load, index) => load / r.capacities[index] * 100)).toFixed(1)}%</td></tr><tr><th>Carga por punto / apoyo</th><td>${r.loadPerPoint.toFixed(2)} t / ${r.groundPressure.toFixed(2)} t/m²</td></tr><tr><th>Trayectoria</th><td>${r.movementMode}; despeje ${r.minClearance} m de ${r.requiredClearance} m requerido</td></tr><tr><th>Dictamen</th><td>${r.safe ? 'APTO CONDICIONADO' : 'NO APTO / REVISAR'}</td></tr></tbody></table>` : '<p class="notice">Ejecute la calculadora para incorporar la memoria.</p>'}
       <h3>Controles obligatorios antes de iniciar</h3><ol class="plan-list"><li>Tabla de carga, manual, inspecciones y certificados disponibles.</li><li>Terreno, nivelación, estabilizadores y capacidad de apoyo verificados.</li><li>Rigging identificado, inspeccionado y con WLL legible.</li><li>Señalero designado, comunicación probada y zona de exclusión delimitada.</li><li>Ruta, interferencias, líneas eléctricas, clima y emergencia revisados.</li></ol>
+      <h3>Controles según el modelo</h3><ol class="plan-list"><li>Centro de gravedad: (${r ? `${r.cgX}, ${r.cgY}, ${r.cgZ} m` : 'pendiente'}); validar estabilidad y evitar inclinación o giro no controlado.</li><li>Orejas, soldaduras, conectores y puntos de izaje: verificar diseño, inspección, orientación de carga y capacidad admisible.</li><li>Movimiento: documentar secuencia, velocidad, radios, despejes, obstáculos, líneas eléctricas, vientos guía y comunicación.</li><li>Tándem: validar reparto por grúa, sincronización, transferencia de carga, radios independientes y criterio de parada.</li></ol>
       <div class="signatures"><span>Elaboró / fecha</span><span>Revisó / fecha</span><span>Aprobó / fecha</span></div>
     </section>`;
 }
