@@ -81,8 +81,13 @@ function renderDashboard() {
               ${field('radius', 'Radio de operación', 10, 'm', '0.1')}
             </section>
             <section class="panel"><h2>2. Capacidad documentada</h2>
+              <label>Número de grúas<select name="craneCount" id="crane-count"><option value="1">1 grúa</option><option value="2">2 grúas</option><option value="3">3 grúas</option></select></label>
               ${field('capacity', 'Capacidad de tabla a esta configuración', 8, 't', '0.01')}
               ${field('chartRadius', 'Radio correspondiente de la tabla', 10, 'm', '0.1')}
+              ${field('capacity2', 'Capacidad grúa 2 (tándem)', 8, 't', '0.01')}
+              ${field('capacity3', 'Capacidad grúa 3 (tándem)', 8, 't', '0.01')}
+              ${field('radius2', 'Radio grúa 2 (tándem)', 10, 'm', '0.1')}
+              ${field('radius3', 'Radio grúa 3 (tándem)', 10, 'm', '0.1')}
               ${field('wind', 'Viento previsto', 20, 'km/h', '0.1')}
               ${field('windLimit', 'Límite del fabricante / plan', 30, 'km/h', '0.1')}
               ${field('groundBearing', 'Capacidad admisible del terreno', 20, 't/m²', '0.1')}
@@ -92,7 +97,18 @@ function renderDashboard() {
               ${field('angle', 'Ángulo del ramal respecto a horizontal', 60, '°', '0.1')}
               ${field('slingWll', 'WLL por ramal', 4, 't', '0.01')}
               ${field('hookWll', 'WLL de grilletes / ganchos', 8, 't', '0.01')}
+              <label>Tipo de accesorio<select name="accessoryType"><option>Eslinga sintética</option><option>Eslinga de cable</option><option>Eslinga de cadena</option><option>Viga separadora</option><option>Balancín</option><option>Grilletes y herrajes</option></select></label>
+              <label>Acreditación de equipos<select name="accreditation"><option value="yes">Vigente y disponible</option><option value="no">No disponible</option></select></label>
               ${field('projectedArea', 'Área proyectada al viento', 4, 'm²', '0.1')}
+            </section>
+            <section class="panel"><h2>4. Equipos adicionales y reparto</h2>
+              ${field('centerOffset', 'Desfase del centro de gravedad', 0, 'm', '0.1')}
+              ${field('craneSpacing', 'Distancia entre grúas', 10, 'm', '0.1')}
+              ${field('boomLength', 'Longitud de pluma / recorrido', 20, 'm', '0.1')}
+              ${field('liftHeight', 'Altura de elevación', 5, 'm', '0.1')}
+              ${field('auxWll', 'WLL equipo auxiliar / balancín', 10, 't', '0.01')}
+              <label>Memoria y certificado del equipo auxiliar<select name="auxAccreditation"><option value="yes">Verificados</option><option value="no">Pendientes</option></select></label>
+              <p class="muted">En tándem, ingrese la capacidad de cada grúa en su radio real y documente el reparto aprobado.</p>
             </section>
           </div>
           <div class="actions"><button class="primary" type="submit">Calcular y validar</button><button class="secondary" id="reset-form" type="button">Restablecer</button></div>
@@ -124,24 +140,49 @@ function bindNavigation() {
 
 function bindCalculator() {
   const form = document.querySelector('#calculation-form');
+  const craneCount = document.querySelector('#crane-count');
+  craneCount.addEventListener('change', () => {
+    const count = Number(craneCount.value);
+    document.querySelector('[name=capacity2]').closest('label').style.display = count >= 2 ? 'grid' : 'none';
+    document.querySelector('[name=capacity3]').closest('label').style.display = count >= 3 ? 'grid' : 'none';
+    document.querySelector('[name=radius2]').closest('label').style.display = count >= 2 ? 'grid' : 'none';
+    document.querySelector('[name=radius3]').closest('label').style.display = count >= 3 ? 'grid' : 'none';
+  });
+  craneCount.dispatchEvent(new Event('change'));
   form.addEventListener('submit', (event) => {
     event.preventDefault();
     const data = new FormData(form);
     const load = number(data, 'payload') + number(data, 'rigging') + number(data, 'belowHook');
     const designLoad = load * number(data, 'dynamic', 1);
     const capacity = number(data, 'capacity');
+    const craneCountValue = Math.min(3, Math.max(1, number(data, 'craneCount', 1)));
+    const capacities = [capacity, number(data, 'capacity2'), number(data, 'capacity3')].slice(0, craneCountValue);
+    const craneRadii = [number(data, 'chartRadius'), number(data, 'radius2'), number(data, 'radius3')].slice(0, craneCountValue);
+    const centerOffset = number(data, 'centerOffset');
+    const craneSpacing = Math.max(0.1, number(data, 'craneSpacing'));
+    const shareFactor = craneCountValue === 1 ? [1] : capacities.map((_, index) => {
+      const position = index - (craneCountValue - 1) / 2;
+      return Math.max(0.05, 1 / craneCountValue + (centerOffset / craneSpacing) * position);
+    });
+    const craneLoads = shareFactor.map((share) => designLoad * share);
     const utilization = capacity ? designLoad / capacity : Infinity;
     const angle = Math.min(89.9, Math.max(0.1, number(data, 'angle')));
     const legs = Math.max(1, number(data, 'legs', 1));
     const slingTension = designLoad / (legs * Math.sin(angle * Math.PI / 180));
     const windForce = 0.5 * 1.225 * 0.9 * number(data, 'projectedArea') * (number(data, 'wind') / 3.6) ** 2 / 9.80665;
     const warnings = [];
-    if (!capacity || number(data, 'chartRadius') < number(data, 'radius')) warnings.push('La capacidad documentada no corresponde al radio ingresado o está vacía.');
-    if (utilization > 1) warnings.push(`Sobrecarga: utilización ${(utilization * 100).toFixed(1)}%.`);
+    if (capacities.some((value) => !value) || craneRadii.some((value) => value < number(data, 'radius'))) warnings.push('Falta la capacidad de tabla de una grúa o el radio real supera el radio documentado.');
+    craneLoads.forEach((loadForCrane, index) => {
+      const craneUtilization = capacities[index] ? loadForCrane / capacities[index] : Infinity;
+      if (craneUtilization > 1) warnings.push(`Sobrecarga en grúa ${index + 1}: utilización ${(craneUtilization * 100).toFixed(1)}%.`);
+    });
+    if (utilization > 1 && craneCountValue === 1) warnings.push(`Sobrecarga: utilización ${(utilization * 100).toFixed(1)}%.`);
     if (number(data, 'wind') > number(data, 'windLimit')) warnings.push('Viento superior al límite establecido por fabricante o plan.');
     if (slingTension > number(data, 'slingWll')) warnings.push('La tensión calculada supera la WLL de un ramal.');
     if (slingTension * legs > number(data, 'hookWll')) warnings.push('La conexión o grilletes no soportan la carga calculada.');
-    state.result = { ...Object.fromEntries(data), load, designLoad, utilization, slingTension, windForce, warnings, safe: warnings.length === 0 };
+    if (data.get('accreditation') !== 'yes') warnings.push('Los aparejos o accesorios no tienen acreditación vigente.');
+    if (data.get('auxAccreditation') !== 'yes') warnings.push('El equipo auxiliar requiere memoria de cálculo y acreditación antes del izaje.');
+    state.result = { ...Object.fromEntries(data), load, designLoad, utilization, slingTension, windForce, craneLoads, capacities, craneRadii, warnings, safe: warnings.length === 0 };
     renderResult();
     renderPlan();
   });
@@ -157,6 +198,7 @@ function renderResult() {
   document.querySelector('#result').innerHTML = `
     <section class="panel result-card ${result.safe ? 'pass' : 'fail'}"><div class="result-header"><div><div class="eyebrow">Dictamen preliminar</div><h2>${status}</h2></div><strong>${(result.utilization * 100).toFixed(1)}% utilización</strong></div>
     <div class="metrics"><div><span>Carga de diseño</span><strong>${result.designLoad.toFixed(2)} t</strong></div><div><span>Tensión por ramal</span><strong>${result.slingTension.toFixed(2)} t</strong></div><div><span>Fuerza de viento estimada</span><strong>${result.windForce.toFixed(2)} kN</strong></div></div>
+    <p><strong>Reparto tándem:</strong> ${result.craneLoads.map((load, index) => `Grúa ${index + 1}: ${load.toFixed(2)} t / capacidad ${result.capacities[index].toFixed(2)} t`).join(' · ')}</p>
     <ul class="warnings">${(result.warnings.length ? result.warnings : ['Verifique físicamente el equipo, terreno, accesorios, señalero y zona de exclusión antes de autorizar.']).map((item) => `<li>${item}</li>`).join('')}</ul>
     <p class="notice">Este resultado es una verificación preliminar y no sustituye la tabla de carga, manual del fabricante ni la aprobación de una persona competente.</p></section>`;
 }
@@ -169,7 +211,7 @@ function renderPlan() {
       <div class="plan-title"><img src="assets/haug-logo.svg" alt="HAUG"><div><h2>PLAN DE IZAJE Y EVALUACIÓN DE RIESGOS</h2><p>Portal SSOMA · Versión 1.0 · Fecha: ${new Date().toLocaleDateString('es-PE')}</p></div></div>
       <div class="form-grid compact">${field('project', 'Proyecto / frente', '', 'texto')} ${field('location', 'Ubicación', '', 'texto')} ${field('supervisor', 'Persona competente', '', 'nombre')} ${field('equipmentId', 'Equipo / código', '', 'ID')}</div>
       <h3>Resultado de la memoria de cálculo</h3>
-      ${r ? `<table><tbody><tr><th>Configuración</th><td>${configNames[r.configuration]}</td></tr><tr><th>Carga total / diseño</th><td>${r.load.toFixed(2)} t / ${r.designLoad.toFixed(2)} t</td></tr><tr><th>Radio / capacidad</th><td>${r.radius} m / ${r.capacity} t</td></tr><tr><th>Utilización</th><td>${(r.utilization * 100).toFixed(1)}%</td></tr><tr><th>Dictamen</th><td>${r.safe ? 'APTO CONDICIONADO' : 'NO APTO / REVISAR'}</td></tr></tbody></table>` : '<p class="notice">Ejecute la calculadora para incorporar la memoria.</p>'}
+      ${r ? `<table><tbody><tr><th>Configuración</th><td>${configNames[r.configuration]}</td></tr><tr><th>Carga total / diseño</th><td>${r.load.toFixed(2)} t / ${r.designLoad.toFixed(2)} t</td></tr><tr><th>Reparto por grúa</th><td>${r.craneLoads.map((load, index) => `G${index + 1}: ${load.toFixed(2)} t de ${r.capacities[index].toFixed(2)} t`).join(' · ')}</td></tr><tr><th>Radio / capacidad</th><td>${r.radius} m / ${r.capacity} t</td></tr><tr><th>Utilización máxima</th><td>${Math.max(...r.craneLoads.map((load, index) => load / r.capacities[index] * 100)).toFixed(1)}%</td></tr><tr><th>Dictamen</th><td>${r.safe ? 'APTO CONDICIONADO' : 'NO APTO / REVISAR'}</td></tr></tbody></table>` : '<p class="notice">Ejecute la calculadora para incorporar la memoria.</p>'}
       <h3>Controles obligatorios antes de iniciar</h3><ol class="plan-list"><li>Tabla de carga, manual, inspecciones y certificados disponibles.</li><li>Terreno, nivelación, estabilizadores y capacidad de apoyo verificados.</li><li>Rigging identificado, inspeccionado y con WLL legible.</li><li>Señalero designado, comunicación probada y zona de exclusión delimitada.</li><li>Ruta, interferencias, líneas eléctricas, clima y emergencia revisados.</li></ol>
       <div class="signatures"><span>Elaboró / fecha</span><span>Revisó / fecha</span><span>Aprobó / fecha</span></div>
     </section>`;
